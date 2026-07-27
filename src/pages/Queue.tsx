@@ -654,10 +654,10 @@ function AdminHall({
     [queue],
   );
 
-  const skipped = useMemo(
-    () => queue.filter((candidate) => candidate.status === "skipped"),
-    [queue],
-  );
+  //   const skipped = useMemo(
+  //     () => queue.filter((candidate) => candidate.status === "skipped"),
+  //     [queue],
+  //   );
 
   const updateStatus = async (
     candidate: QueueEntryWithId,
