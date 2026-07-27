@@ -364,7 +364,20 @@ function CandidateSessionCard({
                   : status === "ended"
                     ? "Session ended"
                     : "Join queue"}
-                {!joining && status !== "ended" && <span>→</span>}
+                {!joining && status !== "ended" && (
+                  <span>
+                    {" "}
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      height="17px"
+                      viewBox="0 -960 960 960"
+                      width="17px"
+                      fill="#090909"
+                    >
+                      <path d="m256-240-56-56 384-384H240v-80h480v480h-80v-344L256-240Z" />
+                    </svg>
+                  </span>
+                )}
               </button>
             </>
           ) : entry.status === "completed" ? (
@@ -377,7 +390,17 @@ function CandidateSessionCard({
               </div>
 
               <span className="flex w-full items-center justify-center gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-5 py-2.5 text-sm font-medium text-emerald-500 sm:w-auto">
-                <span>✓</span>
+                <span>
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    height="17px"
+                    viewBox="0 -960 960 960"
+                    width="17px"
+                    fill="#e3e3e3"
+                  >
+                    <path d="M389-267 195-460l51-52 143 143 325-324 51 51-376 375Z" />
+                  </svg>
+                </span>
                 Completed
               </span>
             </>
@@ -391,7 +414,6 @@ function CandidateSessionCard({
               </div>
 
               <span className="flex w-full items-center justify-center gap-2 rounded-lg border border-amber-500/20 bg-amber-500/5 px-5 py-2.5 text-sm font-medium text-amber-500 sm:w-auto">
-                <span>—</span>
                 Closed
               </span>
             </>
@@ -420,7 +442,15 @@ function CandidateSessionCard({
                 className="group flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-[var(--foreground)] px-5 py-2.5 text-sm font-medium text-[var(--background)] transition-all hover:-translate-y-0.5 hover:opacity-90 active:translate-y-0 sm:w-auto"
               >
                 Return to waiting hall
-                <span>→</span>
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  height="17px"
+                  viewBox="0 -960 960 960"
+                  width="17px"
+                  fill="#090909"
+                >
+                  <path d="m256-240-56-56 384-384H240v-80h480v480h-80v-344L256-240Z" />
+                </svg>
               </button>
             </>
           )}
