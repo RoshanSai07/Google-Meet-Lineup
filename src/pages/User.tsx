@@ -372,7 +372,7 @@ function CandidateSessionCard({
                       height="17px"
                       viewBox="0 -960 960 960"
                       width="17px"
-                      fill="#090909"
+                      fill="#e3e3e3"
                     >
                       <path d="m256-240-56-56 384-384H240v-80h480v480h-80v-344L256-240Z" />
                     </svg>
@@ -396,7 +396,7 @@ function CandidateSessionCard({
                     height="17px"
                     viewBox="0 -960 960 960"
                     width="17px"
-                    fill="#e3e3e3"
+                    fill="#147b3a"
                   >
                     <path d="M389-267 195-460l51-52 143 143 325-324 51 51-376 375Z" />
                   </svg>
@@ -447,7 +447,7 @@ function CandidateSessionCard({
                   height="17px"
                   viewBox="0 -960 960 960"
                   width="17px"
-                  fill="#090909"
+                  fill="#e3e3e3"
                 >
                   <path d="m256-240-56-56 384-384H240v-80h480v480h-80v-344L256-240Z" />
                 </svg>
