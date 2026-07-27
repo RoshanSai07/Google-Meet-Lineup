@@ -28,12 +28,13 @@ export async function requestNotificationPermission() {
   return permission === "granted";
 }
 
-export function sendNotification(title: string, body: string) {
+export function sendNotification(title: string, body: string, tag?: string) {
   if (!notificationsSupported()) return;
   if (Notification.permission !== "granted") return;
 
   new Notification(title, {
     body,
     icon: "/icon-192.png",
+    tag,
   });
 }
