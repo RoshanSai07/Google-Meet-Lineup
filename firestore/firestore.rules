@@ -1,0 +1,67 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return signedIn() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin";
+    }
+
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+
+      allow create: if isOwner(userId)
+        && request.resource.data.keys().hasOnly([
+          "name",
+          "email",
+          "photoURL",
+          "role",
+          "createdAt"
+        ])
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.role == "candidate"
+        && request.resource.data.createdAt == request.time;
+
+      allow update, delete: if isAdmin();
+    }
+
+    match /sessions/{sessionId} {
+      allow read: if signedIn();
+      allow create, update, delete: if isAdmin();
+
+      match /queue/{userId} {
+        allow read: if isOwner(userId) || isAdmin();
+
+        allow create: if isOwner(userId)
+          && request.resource.data.keys().hasOnly([
+            "name",
+            "email",
+            "joinedAt",
+            "status"
+          ])
+          && request.resource.data.email == request.auth.token.email
+          && request.resource.data.status == "waiting"
+          && request.resource.data.joinedAt == request.time;
+
+        allow update: if isAdmin();
+
+        allow delete: if isAdmin() || isOwner(userId);
+      }
+
+      match /public/{documentId} {
+        allow read: if signedIn();
+        allow create, update, delete: if isAdmin();
+      }
+    }
+  }
+}

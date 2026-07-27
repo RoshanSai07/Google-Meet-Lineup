@@ -1,0 +1,171 @@
+@import url("https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,100..900;1,100..900&display=swap");
+@import "tailwindcss";
+
+:root {
+  color-scheme: light;
+
+  /* Base */
+  --background: #f7f7f8;
+  --foreground: #111111;
+
+  /* Glass surfaces */
+  --surface: rgba(255, 255, 255, 0.72);
+  --surface-hover: rgba(255, 255, 255, 0.9);
+  --surface-strong: rgba(255, 255, 255, 0.95);
+
+  /* Borders */
+  --border: rgba(0, 0, 0, 0.08);
+  --border-strong: rgba(0, 0, 0, 0.14);
+
+  /* Text */
+  --muted: #71717a;
+  --muted-foreground: #52525b;
+
+  /* Brand */
+  --accent: #f97316;
+  --accent-hover: #ea580c;
+  --accent-foreground: #ffffff;
+
+  /* Status */
+  --success: #22c55e;
+  --warning: #f59e0b;
+  --danger: #ef4444;
+
+  /* Effects */
+  --glass-blur: 20px;
+  --shadow: 0 8px 32px rgba(0, 0, 0, 0.06);
+}
+
+.dark {
+  color-scheme: dark;
+
+  /* Base */
+  --background: #090909;
+  --foreground: #fafafa;
+
+  /* Glass surfaces */
+  --surface: rgba(255, 255, 255, 0.02);
+  --surface-hover: rgba(255, 255, 255, 0.05);
+  --glass-blur: 16px;
+  --surface-strong: rgba(255, 255, 255, 0.1);
+
+  /* Borders */
+  --border: rgba(255, 255, 255, 0.1);
+  --border-strong: rgba(255, 255, 255, 0.16);
+
+  /* Text */
+  --muted: #a1a1aa;
+  --muted-foreground: #d4d4d8;
+
+  /* Brand */
+  --accent: #f97316;
+  --accent-hover: #fb923c;
+  --accent-foreground: #ffffff;
+
+  /* Status */
+  --success: #22c55e;
+  --warning: #f59e0b;
+  --danger: #ef4444;
+
+  /* Effects */
+  --shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+  --fluid-highlight: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.06) 0%,
+    rgba(255, 255, 255, 0) 60%
+  );
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not(.light) {
+    color-scheme: dark;
+
+    --background: #090909;
+    --foreground: #fafafa;
+
+    --surface: rgba(255, 255, 255, 0.05);
+    --surface-hover: rgba(255, 255, 255, 0.08);
+    --surface-strong: rgba(255, 255, 255, 0.1);
+
+    --border: rgba(255, 255, 255, 0.1);
+    --border-strong: rgba(255, 255, 255, 0.16);
+
+    --muted: #a1a1aa;
+    --muted-foreground: #d4d4d8;
+
+    --accent: #f97316;
+    --accent-hover: #fb923c;
+    --accent-foreground: #ffffff;
+
+    --success: #22c55e;
+    --warning: #f59e0b;
+    --danger: #ef4444;
+
+    --shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+
+  background: var(--background);
+  color: var(--foreground);
+
+  font-family: "Montserrat", sans-serif;
+  font-weight: 400;
+
+  transition:
+    background-color 200ms ease,
+    color 200ms ease;
+}
+
+.glass {
+  position: relative;
+  background: var(--surface);
+
+  /* Standard border keeps border-radius perfectly round */
+  border: 1px solid var(--border-color);
+
+  /* Blur + mild saturation gives a premium frosted look */
+  backdrop-filter: blur(var(--glass-blur)) saturate(115%);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(115%);
+
+  /* Layered shadows: 1 exterior soft shadow, 2 interior liquid reflections */
+  box-shadow:
+    0 8px 32px 0 rgba(0, 0, 0, 0.08),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.15),
+    inset 0 -8px 16px -4px rgba(255, 255, 255, 0.02);
+
+  transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Pseudo-element injects the soft, fluid light streak */
+.glass::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--fluid-highlight);
+  pointer-events: none;
+}
+
+.glass:hover {
+  background: var(--surface-hover);
+  border-color: rgba(255, 255, 255, 0.12);
+
+  /* Smooth expansion of the inner liquid light */
+  box-shadow:
+    0 12px 40px 0 rgba(0, 0, 0, 0.12),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.25),
+    inset 0 -12px 20px -4px rgba(255, 255, 255, 0.04);
+}
