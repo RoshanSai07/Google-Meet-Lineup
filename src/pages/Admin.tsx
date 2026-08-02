@@ -232,12 +232,12 @@ function AdminSessionCard({
   const end = session.endsAt.toDate();
   const scheduleStatus = getScheduleStatus(start, end);
 
-  const displayStatus =
-    session.status === "closed"
-      ? "closed"
-      : session.status === "paused"
-        ? "paused"
-        : scheduleStatus;
+  // const displayStatus =
+  //   session.status === "closed"
+  //     ? "closed"
+  //     : session.status === "paused"
+  //       ? "paused"
+  //       : scheduleStatus;
 
   const date = start.toLocaleDateString("en-IN", {
     day: "2-digit",
