@@ -312,11 +312,11 @@ function CandidateHall({
 
   const queueOpen = session.status === "open" && scheduleStatus === "live";
 
-  const queuePaused = session.status === "paused";
+  // const queuePaused = session.status === "paused";
   const queueClosed = session.status === "closed";
-  const queueUpcoming =
-    session.status === "open" && scheduleStatus === "upcoming";
-  const queueEnded = session.status === "open" && scheduleStatus === "ended";
+  // const queueUpcoming =
+  //   session.status === "open" && scheduleStatus === "upcoming";
+  // const queueEnded = session.status === "open" && scheduleStatus === "ended";
 
   const handleLeave = async () => {
     try {
