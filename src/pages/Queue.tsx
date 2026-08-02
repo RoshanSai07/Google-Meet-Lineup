@@ -305,10 +305,10 @@ function CandidateHall({
   const [leaving, setLeaving] = useState(false);
   const [rejoining, setRejoining] = useState(false);
 
-  const scheduleStatus = getScheduleStatus(
-    session.startsAt.toDate(),
-    session.endsAt.toDate(),
-  );
+  const scheduleStatus =
+    session.startsAt && session.endsAt
+      ? getScheduleStatus(session.startsAt.toDate(), session.endsAt.toDate())
+      : "ended";
 
   const queueOpen = session.status === "open" && scheduleStatus === "live";
 
@@ -701,10 +701,10 @@ function AdminHall({
     null,
   );
 
-  const scheduleStatus = getScheduleStatus(
-    session.startsAt.toDate(),
-    session.endsAt.toDate(),
-  );
+  const scheduleStatus =
+    session.startsAt && session.endsAt
+      ? getScheduleStatus(session.startsAt.toDate(), session.endsAt.toDate())
+      : "ended";
 
   const queueOpen = session.status === "open" && scheduleStatus === "live";
 
@@ -1278,19 +1278,25 @@ function LiveDetail({
   timer = false,
 }: {
   label: string;
-  timestamp: Timestamp;
+  timestamp: Timestamp | null | undefined;
   timer?: boolean;
 }) {
   const [now, setNow] = useState(Date.now());
 
   useEffect(() => {
+    if (!timestamp) return;
+
     const interval = window.setInterval(
       () => setNow(Date.now()),
       timer ? 1000 : 30000,
     );
 
     return () => window.clearInterval(interval);
-  }, [timer]);
+  }, [timer, timestamp]);
+
+  if (!timestamp) {
+    return <SessionDetail label={label} value="—" />;
+  }
 
   return (
     <SessionDetail
@@ -1312,7 +1318,9 @@ function SessionRemainingDetail({ session }: { session: InterviewSession }) {
     return () => window.clearInterval(interval);
   }, []);
 
-  const remaining = Math.max(0, session.endsAt.toDate().getTime() - now);
+  const remaining = session.endsAt
+    ? Math.max(0, session.endsAt.toDate().getTime() - now)
+    : 0;
 
   return (
     <SessionDetail
@@ -1635,7 +1643,9 @@ function LoadingScreen() {
   );
 }
 
-function formatTime(timestamp: Timestamp) {
+function formatTime(timestamp?: Timestamp | null) {
+  if (!timestamp) return "—";
+
   return timestamp.toDate().toLocaleTimeString("en-IN", {
     hour: "numeric",
     minute: "2-digit",
@@ -1682,7 +1692,7 @@ function NotificationStack({
   if (notifications.length === 0) return null;
 
   return (
-    <div className="fixed left-4 right-4 top-4 z-[100] flex flex-col gap-3 sm:left-auto sm:right-6 sm:top-6 sm:w-[380px]">
+    <div className="fixed left-4 right-4 top-4 z-[9999] flex flex-col gap-3 sm:left-auto sm:right-6 sm:top-6 sm:w-[380px]">
       {notifications.map((notification) => {
         const interviewing = notification.type === "interviewing";
         const skipped = notification.type === "skipped";

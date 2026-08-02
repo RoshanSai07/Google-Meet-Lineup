@@ -204,6 +204,4 @@ export async function rejoinQueue(sessionId: string, userId: string) {
     completedAt: null,
     skippedAt: null,
   });
-
-  await syncPublicLiveState(sessionId);
 }
