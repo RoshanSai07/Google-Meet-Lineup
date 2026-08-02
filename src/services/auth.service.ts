@@ -52,5 +52,19 @@ export async function isAdmin(userId: string) {
     return false;
   }
 
-  return snapshot.data().role === "admin";
+  const role = snapshot.data().role;
+
+  return role === "admin" || role === "superadmin";
+}
+
+export async function isSuperAdmin(userId: string) {
+  const userRef = doc(db, "users", userId);
+
+  const snapshot = await getDoc(userRef);
+
+  if (!snapshot.exists()) {
+    return false;
+  }
+
+  return snapshot.data().role === "superadmin";
 }

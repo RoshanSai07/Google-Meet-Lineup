@@ -1,4 +1,5 @@
 import type { Timestamp } from "firebase/firestore";
+export type SessionStatus = "open" | "paused" | "closed";
 
 export interface InterviewSession {
   id: string;
@@ -6,7 +7,7 @@ export interface InterviewSession {
   description: string;
   meetUrl: string;
 
-  active: boolean;
+  status: SessionStatus;
 
   averageInterviewMinutes: number;
 

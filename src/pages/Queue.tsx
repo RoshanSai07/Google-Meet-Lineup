@@ -3,9 +3,16 @@ import type { User } from "firebase/auth";
 import type { Timestamp } from "firebase/firestore";
 import { useNavigate, useParams } from "react-router-dom";
 
-import { isAdmin, logout, subscribeToAuth } from "../services/auth.service";
+import {
+  isAdmin,
+  logout,
+  subscribeToAuth,
+  isSuperAdmin,
+} from "../services/auth.service";
+
 import {
   leaveQueue,
+  rejoinQueue,
   subscribeToMyQueueEntry,
   subscribeToPublicLiveState,
   subscribeToQueue,
@@ -32,6 +39,8 @@ export default function Queue() {
 
   const [user, setUser] = useState<User | null>(null);
   const [admin, setAdmin] = useState(false);
+  const [superAdmin, setSuperAdmin] = useState(false);
+
   const [session, setSession] = useState<InterviewSession | null>(null);
   const [entry, setEntry] = useState<QueueEntry | null>(null);
   const [queue, setQueue] = useState<QueueEntryWithId[]>([]);
@@ -87,10 +96,15 @@ export default function Queue() {
       }
 
       try {
-        setAdmin(await isAdmin(currentUser.uid));
+        const adminAccess = await isAdmin(currentUser.uid);
+        const superAdminAccess = await isSuperAdmin(currentUser.uid);
+
+        setAdmin(adminAccess);
+        setSuperAdmin(superAdminAccess);
       } catch (error) {
         console.error("Failed to determine role:", error);
         setAdmin(false);
+        setSuperAdmin(false);
       } finally {
         setAuthLoading(false);
         setRoleLoading(false);
@@ -161,13 +175,13 @@ export default function Queue() {
           if (newStatus === "skipped") {
             showLineupNotification(
               "skipped",
-              "Your turn was skipped",
-              "Contact the interview team if you're still available.",
+              "We couldn't reach you",
+              "If you're still available, you can rejoin the queue.",
             );
 
             sendNotification(
-              "Your turn was skipped",
-              "Check Lineup or contact the interview team if you're still available.",
+              "We couldn't reach you",
+              "Open Lineup to rejoin the interview queue.",
               "lineup-skipped",
             );
           }
@@ -249,6 +263,7 @@ export default function Queue() {
             sessionId={sessionId}
             queue={queue}
             liveState={liveState}
+            superAdmin={superAdmin}
             onBack={() => navigate("/admin")}
           />
         ) : (
@@ -288,6 +303,20 @@ function CandidateHall({
 }) {
   const [leaveOpen, setLeaveOpen] = useState(false);
   const [leaving, setLeaving] = useState(false);
+  const [rejoining, setRejoining] = useState(false);
+
+  const scheduleStatus = getScheduleStatus(
+    session.startsAt.toDate(),
+    session.endsAt.toDate(),
+  );
+
+  const queueOpen = session.status === "open" && scheduleStatus === "live";
+
+  const queuePaused = session.status === "paused";
+  const queueClosed = session.status === "closed";
+  const queueUpcoming =
+    session.status === "open" && scheduleStatus === "upcoming";
+  const queueEnded = session.status === "open" && scheduleStatus === "ended";
 
   const handleLeave = async () => {
     try {
@@ -297,6 +326,17 @@ function CandidateHall({
     } catch (error) {
       console.error("Failed to leave queue:", error);
       setLeaving(false);
+    }
+  };
+
+  const handleRejoin = async () => {
+    try {
+      setRejoining(true);
+      await rejoinQueue(sessionId, user.uid);
+    } catch (error) {
+      console.error("Failed to rejoin queue:", error);
+    } finally {
+      setRejoining(false);
     }
   };
 
@@ -338,12 +378,11 @@ function CandidateHall({
 
       <header className="mt-6 flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <div className="mb-3 flex items-center gap-2">
-            <LiveDot />
-
-            <span className="text-xs font-medium uppercase tracking-[0.16em] text-[var(--accent)]">
-              Live interview session
-            </span>
+          <div className="mb-3">
+            <SessionStatusIndicator
+              status={session.status}
+              scheduleStatus={scheduleStatus}
+            />
           </div>
 
           <h1 className="text-3xl font-semibold tracking-[-0.04em] sm:text-4xl">
@@ -356,7 +395,7 @@ function CandidateHall({
           </p>
         </div>
 
-        {entry.status === "waiting" && (
+        {entry.status === "waiting" && !queueClosed && (
           <button
             onClick={() => setLeaveOpen(true)}
             className="cursor-pointer rounded-lg border border-[var(--border)] px-4 py-2.5 text-sm font-medium text-[var(--muted)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--foreground)]"
@@ -365,6 +404,11 @@ function CandidateHall({
           </button>
         )}
       </header>
+
+      <SessionStatusBanner
+        status={session.status}
+        scheduleStatus={scheduleStatus}
+      />
 
       <section className="mt-8">
         <article
@@ -455,6 +499,28 @@ function CandidateHall({
                     </span>
                   </a>
                 )}
+              </div>
+            )}
+
+            {entry.status === "skipped" && (
+              <div className="mt-7 flex flex-col gap-3 border-t border-amber-500/15 pt-5 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-xs font-medium">
+                    Want to continue with your interview?
+                  </p>
+
+                  <p className="mt-1 text-[0.7rem] text-[var(--muted)]">
+                    Rejoining will place you at the end of the current queue.
+                  </p>
+                </div>
+
+                <button
+                  onClick={handleRejoin}
+                  disabled={rejoining || !queueOpen}
+                  className="cursor-pointer rounded-lg bg-[var(--foreground)] px-5 py-2.5 text-sm font-medium text-[var(--background)] transition-all hover:-translate-y-0.5 hover:opacity-90 active:translate-y-0 disabled:pointer-events-none disabled:opacity-50"
+                >
+                  {rejoining ? "Rejoining..." : "Rejoin queue"}
+                </button>
               </div>
             )}
 
@@ -620,18 +686,36 @@ function AdminHall({
   sessionId,
   queue,
   liveState,
+  superAdmin,
   onBack,
 }: {
   session: InterviewSession;
   sessionId: string;
   queue: QueueEntryWithId[];
   liveState: PublicLiveState | null;
+  superAdmin: boolean;
   onBack: () => void;
 }) {
   const [updating, setUpdating] = useState<string | null>(null);
   const [removeTarget, setRemoveTarget] = useState<QueueEntryWithId | null>(
     null,
   );
+
+  const scheduleStatus = getScheduleStatus(
+    session.startsAt.toDate(),
+    session.endsAt.toDate(),
+  );
+
+  const queueOpen = session.status === "open" && scheduleStatus === "live";
+
+  const queuePaused = session.status === "paused";
+
+  const queueClosed = session.status === "closed";
+
+  const queueUpcoming =
+    session.status === "open" && scheduleStatus === "upcoming";
+
+  const queueEnded = session.status === "open" && scheduleStatus === "ended";
 
   const waiting = useMemo(
     () => queue.filter((candidate) => candidate.status === "waiting"),
@@ -693,12 +777,11 @@ function AdminHall({
 
       <header className="mt-6 flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <div className="mb-3 flex items-center gap-2">
-            <LiveDot />
-
-            <span className="text-xs font-medium uppercase tracking-[0.16em] text-[var(--accent)]">
-              Live interview session
-            </span>
+          <div className="mb-3">
+            <SessionStatusIndicator
+              status={session.status}
+              scheduleStatus={scheduleStatus}
+            />
           </div>
 
           <h1 className="text-3xl font-semibold tracking-[-0.04em] sm:text-4xl">
@@ -722,6 +805,12 @@ function AdminHall({
           </a>
         )}
       </header>
+
+      <SessionStatusBanner
+        status={session.status}
+        scheduleStatus={scheduleStatus}
+        admin
+      />
 
       <section className="mt-8 grid gap-4 lg:grid-cols-2">
         <article className="glass relative overflow-hidden rounded-xl p-5 sm:p-7">
@@ -788,7 +877,7 @@ function AdminHall({
                   <div className="flex flex-col gap-2 sm:flex-row">
                     <button
                       onClick={() => updateStatus(interviewing, "skipped")}
-                      disabled={updating === interviewing.id}
+                      disabled={updating === interviewing.id || queueClosed}
                       className="cursor-pointer rounded-lg border border-amber-500/20 px-5 py-2.5 text-sm font-medium text-amber-500 transition-colors hover:bg-amber-500/10 disabled:pointer-events-none disabled:opacity-50"
                     >
                       {updating === interviewing.id
@@ -798,7 +887,7 @@ function AdminHall({
 
                     <button
                       onClick={() => updateStatus(interviewing, "completed")}
-                      disabled={updating === interviewing.id}
+                      disabled={updating === interviewing.id || queueClosed}
                       className="cursor-pointer rounded-lg bg-[var(--accent)] px-5 py-2.5 text-sm font-semibold text-white transition-all hover:-translate-y-0.5 hover:bg-[var(--accent-hover)] active:translate-y-0 disabled:pointer-events-none disabled:opacity-50"
                     >
                       {updating === interviewing.id
@@ -815,11 +904,19 @@ function AdminHall({
                 </h2>
 
                 <p className="mt-2 max-w-md text-sm leading-6 text-[var(--muted)]">
-                  {next
-                    ? `${next.name} is ready to begin.`
-                    : waiting.length
-                      ? "Call the next candidate when you're ready."
-                      : "Candidates will appear here as they join."}
+                  {queueClosed
+                    ? "This session has been closed. No further interviews can be started."
+                    : queuePaused
+                      ? "The queue is paused. Candidate positions are being preserved."
+                      : queueUpcoming
+                        ? "The interview window hasn't started yet."
+                        : queueEnded
+                          ? "The scheduled interview window has ended."
+                          : next
+                            ? `${next.name} is ready to begin.`
+                            : waiting.length
+                              ? "Call the next candidate when you're ready."
+                              : "Candidates will appear here as they join."}
                 </p>
               </div>
             )}
@@ -886,7 +983,7 @@ function AdminHall({
               </div>
 
               <div className="flex flex-col gap-2 sm:flex-row">
-                {!interviewing && (
+                {!interviewing && queueOpen && (
                   <button
                     onClick={() => updateStatus(next, "interviewing")}
                     disabled={updating === next.id}
@@ -895,30 +992,48 @@ function AdminHall({
                     {updating === next.id ? "Starting..." : "Start interview"}
                   </button>
                 )}
-
                 <button
                   onClick={() => updateStatus(next, "skipped")}
-                  disabled={updating === next.id}
+                  disabled={updating === next.id || !queueOpen}
                   className="cursor-pointer rounded-lg border border-amber-500/20 px-5 py-2.5 text-sm font-medium text-amber-500 transition-colors hover:bg-amber-500/10 disabled:opacity-50"
                 >
                   {updating === next.id ? "Updating..." : "Skip"}
                 </button>
-
-                <button
-                  onClick={() => setRemoveTarget(next)}
-                  disabled={updating === next.id}
-                  className="cursor-pointer rounded-lg border border-[var(--border)] px-5 py-2.5 text-sm font-medium text-[var(--muted)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--foreground)] disabled:opacity-50"
-                >
-                  Remove
-                </button>
+                {superAdmin && (
+                  <button
+                    onClick={() => setRemoveTarget(next)}
+                    disabled={updating === next.id}
+                    className="cursor-pointer rounded-lg border border-[var(--border)] px-5 py-2.5 text-sm font-medium text-[var(--muted)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--foreground)] disabled:opacity-50"
+                  >
+                    Remove
+                  </button>
+                )}
               </div>
             </div>
           ) : (
             <div className="mt-5">
-              <h2 className="text-lg font-semibold">Nobody called yet</h2>
+              <h2 className="text-lg font-semibold">
+                {queueClosed
+                  ? "Session closed"
+                  : queuePaused
+                    ? "Queue paused"
+                    : queueUpcoming
+                      ? "Session upcoming"
+                      : queueEnded
+                        ? "Session ended"
+                        : "Nobody called yet"}
+              </h2>
 
               <p className="mt-1.5 text-sm text-[var(--muted)]">
-                Call the first waiting candidate when you're ready.
+                {queueClosed
+                  ? "No more candidates can be called in this session."
+                  : queuePaused
+                    ? "Resume the session to continue calling candidates."
+                    : queueUpcoming
+                      ? "Queue controls will become available when the interview window begins."
+                      : queueEnded
+                        ? "The scheduled interview window has ended."
+                        : "Call the first waiting candidate when you're ready."}
               </p>
             </div>
           )}
@@ -979,7 +1094,7 @@ function AdminHall({
                   </div>
 
                   <div className="flex gap-2 pl-14 sm:pl-0">
-                    {index === 0 && !next && (
+                    {index === 0 && !next && queueOpen && (
                       <button
                         onClick={() => updateStatus(candidate, "next")}
                         disabled={updating === candidate.id}
@@ -988,22 +1103,22 @@ function AdminHall({
                         {updating === candidate.id ? "Calling..." : "Call next"}
                       </button>
                     )}
-
                     <button
                       onClick={() => updateStatus(candidate, "skipped")}
-                      disabled={updating === candidate.id}
+                      disabled={updating === candidate.id || !queueOpen}
                       className="cursor-pointer rounded-lg border border-amber-500/20 px-4 py-2.5 text-xs font-medium text-amber-500 transition-colors hover:bg-amber-500/10 disabled:opacity-50"
                     >
                       {updating === candidate.id ? "Updating..." : "Skip"}
                     </button>
-
-                    <button
-                      onClick={() => setRemoveTarget(candidate)}
-                      disabled={updating === candidate.id}
-                      className="cursor-pointer rounded-lg border border-[var(--border)] px-4 py-2.5 text-xs font-medium text-[var(--muted)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--foreground)] disabled:opacity-50"
-                    >
-                      Remove
-                    </button>
+                    {superAdmin && (
+                      <button
+                        onClick={() => setRemoveTarget(candidate)}
+                        disabled={updating === candidate.id}
+                        className="cursor-pointer rounded-lg border border-[var(--border)] px-4 py-2.5 text-xs font-medium text-[var(--muted)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--foreground)] disabled:opacity-50"
+                      >
+                        Remove
+                      </button>
+                    )}
                   </div>
                 </div>
               </article>
@@ -1360,16 +1475,16 @@ function getCandidateStatus(status: QueueStatus) {
 
     case "skipped":
       return {
-        label: "Skipped",
-        title: "Action needed.",
+        label: "Missed interview",
+        title: "Still available?",
         description:
-          "Your turn was skipped. Please contact the interview team if you're still available.",
-        card: "bg-red-600/10",
-        dot: "bg-red-600",
-        text: "text-red-600",
-        glow: "bg-red-600",
-        border: "border-red-600/20",
-        surface: "bg-red-600/[0.03]",
+          "We couldn't reach you for your interview. If you're still available, you can rejoin the queue.",
+        card: "bg-amber-600/10",
+        dot: "bg-amber-500",
+        text: "text-amber-500",
+        glow: "bg-amber-500",
+        border: "border-amber-500/20",
+        surface: "bg-amber-500/[0.03]",
       };
 
     default:
@@ -1443,6 +1558,71 @@ function LiveDot() {
     </span>
   );
 }
+function SessionStatusIndicator({
+  status,
+  scheduleStatus,
+}: {
+  status: InterviewSession["status"];
+  scheduleStatus: ScheduleStatus;
+}) {
+  if (status === "paused") {
+    return (
+      <div className="flex items-center gap-2">
+        <span className="size-2 rounded-full bg-amber-500" />
+
+        <span className="text-xs font-medium uppercase tracking-[0.16em] text-amber-500">
+          Session paused
+        </span>
+      </div>
+    );
+  }
+
+  if (status === "closed") {
+    return (
+      <div className="flex items-center gap-2">
+        <span className="size-2 rounded-full bg-[var(--muted)]" />
+
+        <span className="text-xs font-medium uppercase tracking-[0.16em] text-[var(--muted)]">
+          Session closed
+        </span>
+      </div>
+    );
+  }
+
+  if (scheduleStatus === "upcoming") {
+    return (
+      <div className="flex items-center gap-2">
+        <span className="size-2 rounded-full border border-[var(--accent)]" />
+
+        <span className="text-xs font-medium uppercase tracking-[0.16em] text-[var(--accent)]">
+          Upcoming session
+        </span>
+      </div>
+    );
+  }
+
+  if (scheduleStatus === "ended") {
+    return (
+      <div className="flex items-center gap-2">
+        <span className="size-2 rounded-full bg-[var(--muted)] opacity-50" />
+
+        <span className="text-xs font-medium uppercase tracking-[0.16em] text-[var(--muted)]">
+          Session ended
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      <LiveDot />
+
+      <span className="text-xs font-medium uppercase tracking-[0.16em] text-[var(--accent)]">
+        Live interview session
+      </span>
+    </div>
+  );
+}
 
 function LoadingScreen() {
   return (
@@ -1510,19 +1690,37 @@ function NotificationStack({
         return (
           <article
             key={notification.id}
-            className={`relative overflow-hidden rounded-xl border bg-[var(--background)] p-4 shadow-2xl backdrop-blur-xl ${interviewing ? "border-emerald-500/30" : skipped ? "border-red-500/30" : "border-[var(--border)]"}`}
+            className="glass overflow-hidden rounded-xl shadow-2xl"
           >
-            <div
-              className={`absolute inset-y-0 left-0 w-1 ${interviewing ? "bg-emerald-500" : skipped ? "bg-red-500" : notification.type === "next" ? "bg-amber-500" : "bg-[var(--accent)]"}`}
-            />
-
-            <div className="flex items-start gap-3 pl-2">
+            <div className="flex items-start gap-3.5 p-4">
               <div
-                className={`mt-1.5 size-2 shrink-0 rounded-full ${interviewing ? "bg-emerald-500" : skipped ? "bg-red-500" : notification.type === "next" ? "bg-amber-500" : "bg-[var(--accent)]"}`}
-              />
+                className={`mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg border ${
+                  interviewing
+                    ? "border-emerald-500/20 bg-emerald-500/[0.06]"
+                    : skipped
+                      ? "border-amber-500/20 bg-amber-500/[0.06]"
+                      : notification.type === "next"
+                        ? "border-amber-500/20 bg-amber-500/[0.06]"
+                        : "border-[var(--accent)]/20 bg-[var(--accent)]/[0.06]"
+                }`}
+              >
+                <span
+                  className={`size-1.5 rounded-full ${
+                    interviewing
+                      ? "bg-emerald-500"
+                      : skipped
+                        ? "bg-amber-500"
+                        : notification.type === "next"
+                          ? "bg-amber-500"
+                          : "bg-[var(--accent)]"
+                  }`}
+                />
+              </div>
 
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold">{notification.title}</p>
+                <p className="text-sm font-semibold tracking-[-0.01em]">
+                  {notification.title}
+                </p>
 
                 <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
                   {notification.description}
@@ -1534,10 +1732,18 @@ function NotificationStack({
                     target="_blank"
                     rel="noreferrer"
                     onClick={() => onDismiss(notification.id)}
-                    className="mt-3 inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-3.5 py-2 text-xs font-semibold text-white transition-opacity hover:opacity-90"
+                    className="mt-3 inline-flex items-center gap-2 rounded-lg bg-emerald-700 px-3.5 py-2 text-xs font-semibold text-white transition-all hover:-translate-y-0.5 hover:opacity-90 active:translate-y-0"
                   >
                     Join Google Meet
-                    <span>↗</span>
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      height="14px"
+                      viewBox="0 -960 960 960"
+                      width="14px"
+                      fill="currentColor"
+                    >
+                      <path d="m256-240-56-56 384-384H240v-80h480v480h-80v-344L256-240Z" />
+                    </svg>
                   </a>
                 )}
               </div>
@@ -1545,7 +1751,7 @@ function NotificationStack({
               <button
                 onClick={() => onDismiss(notification.id)}
                 aria-label="Dismiss notification"
-                className="flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-base text-[var(--muted)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--foreground)]"
+                className="flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-lg text-base text-[var(--muted)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--foreground)]"
               >
                 ×
               </button>
@@ -1555,4 +1761,105 @@ function NotificationStack({
       })}
     </div>
   );
+}
+
+function SessionStatusBanner({
+  status,
+  scheduleStatus,
+  admin = false,
+}: {
+  status: InterviewSession["status"];
+  scheduleStatus: ScheduleStatus;
+  admin?: boolean;
+}) {
+  const paused = status === "paused";
+  const closed = status === "closed";
+  const upcoming = status === "open" && scheduleStatus === "upcoming";
+  const ended = status === "open" && scheduleStatus === "ended";
+
+  // Normal live session doesn't need a banner.
+  if (status === "open" && scheduleStatus === "live") {
+    return null;
+  }
+
+  let label = "";
+  let description = "";
+
+  if (paused) {
+    label = "Queue paused";
+    description = admin
+      ? "Queue progression is paused. Current candidate positions are preserved."
+      : "Interviews are taking a short pause. Your position in the queue is safe.";
+  } else if (closed) {
+    label = "Session closed";
+    description = admin
+      ? "This session has been closed. You can still review its interview activity."
+      : "This interview session has been closed. No further candidates will be called.";
+  } else if (upcoming) {
+    label = "Session upcoming";
+    description = admin
+      ? "The interview window hasn't started yet. Queue controls will become available when the session begins."
+      : "This interview session hasn't started yet. Your place in the queue is safe.";
+  } else if (ended) {
+    label = "Session ended";
+    description = admin
+      ? "The scheduled interview window has ended. Existing interview activity can still be reviewed."
+      : "The scheduled interview window has ended. No further candidates will be called.";
+  }
+
+  return (
+    <div className="glass mt-4 overflow-hidden rounded-md">
+      <div className="flex items-start gap-4 p-4 sm:items-center sm:p-5">
+        <div
+          className={`mt-1 flex size-9 shrink-0 items-center justify-center rounded-md border sm:mt-0 ${
+            paused
+              ? "border-amber-500/20 bg-amber-500/[0.06]"
+              : upcoming
+                ? "border-[var(--accent)]/20 bg-[var(--accent)]/[0.06]"
+                : "border-[var(--border)] bg-[var(--surface)]"
+          }`}
+        >
+          {paused ? (
+            <span className="flex gap-[3px]">
+              <span className="h-[12px] w-[3px] rounded-full bg-amber-500" />
+              <span className="h-[12px] w-[3px] rounded-full bg-amber-500" />
+            </span>
+          ) : upcoming ? (
+            <span className="size-2 rounded-full border border-[var(--accent)]" />
+          ) : (
+            <span className="size-2 rounded-full bg-[var(--muted)]" />
+          )}
+        </div>
+
+        <div className="min-w-0">
+          <span
+            className={`text-[0.75rem] font-semibold uppercase tracking-[0.16em] ${
+              paused
+                ? "text-amber-500"
+                : upcoming
+                  ? "text-[var(--accent)]"
+                  : "text-[var(--muted)]"
+            }`}
+          >
+            {label}
+          </span>
+
+          <p className="mt-1 text-sm leading-5 text-[var(--muted)]">
+            {description}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+type ScheduleStatus = "upcoming" | "live" | "ended";
+
+function getScheduleStatus(start: Date, end: Date): ScheduleStatus {
+  const now = new Date();
+
+  if (now < start) return "upcoming";
+  if (now > end) return "ended";
+
+  return "live";
 }

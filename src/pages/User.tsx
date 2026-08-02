@@ -23,6 +23,7 @@ export default function UserPage() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [joining, setJoining] = useState<string | null>(null);
+
   const [notificationSession, setNotificationSession] = useState<string | null>(
     null,
   );
@@ -36,6 +37,9 @@ export default function UserPage() {
 
       try {
         const admin = await isAdmin(currentUser.uid);
+
+        console.log("CURRENT USER:", currentUser.uid);
+        console.log("IS ADMIN:", admin);
 
         if (admin) {
           navigate("/admin", { replace: true });
@@ -83,6 +87,21 @@ export default function UserPage() {
 
   const handleJoinSession = async (sessionId: string) => {
     if (!user) return;
+
+    const session = sessions.find((item) => item.id === sessionId);
+
+    if (!session) return;
+
+    const scheduleStatus = getScheduleStatus(
+      session.startsAt.toDate(),
+      session.endsAt.toDate(),
+    );
+
+    // Client-side protection.
+    // Firestore rules should remain the real security boundary.
+    if (session.status !== "open" || scheduleStatus === "ended") {
+      return;
+    }
 
     try {
       setJoining(sessionId);
@@ -241,6 +260,7 @@ export default function UserPage() {
         <NotificationModal
           onSkip={() => {
             const sessionId = notificationSession;
+
             setNotificationSession(null);
             navigate(`/session/${sessionId}`);
           }}
@@ -282,7 +302,17 @@ function CandidateSessionCard({
   const start = session.startsAt.toDate();
   const end = session.endsAt.toDate();
 
-  const status = getSessionStatus(start, end);
+  /*
+   * These are intentionally separate:
+   *
+   * session.status  -> controlled by Super Admin
+   * scheduleStatus  -> calculated from startsAt / endsAt
+   */
+  const scheduleStatus = getScheduleStatus(start, end);
+
+  const canJoin = session.status === "open" && scheduleStatus !== "ended";
+
+  const canRejoin = session.status === "open" && scheduleStatus !== "ended";
 
   const date = start.toLocaleDateString("en-IN", {
     day: "2-digit",
@@ -308,7 +338,11 @@ function CandidateSessionCard({
       />
 
       <div className="relative">
-        <SessionStatus status={status} />
+        <SessionStatus
+          sessionStatus={session.status}
+          scheduleStatus={scheduleStatus}
+        />
+
         <div className="mt-5">
           <h2 className="text-xl font-semibold tracking-[-0.03em] sm:text-2xl">
             {session.name}
@@ -320,6 +354,7 @@ function CandidateSessionCard({
             </p>
           )}
         </div>
+
         <div className="mt-7 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:max-w-3xl">
           <SessionDetail label="Date" value={date} />
 
@@ -331,6 +366,7 @@ function CandidateSessionCard({
             className="col-span-2 sm:col-span-1"
           />
         </div>
+
         <div className="mt-7 flex flex-col gap-3 border-t border-[var(--border)] pt-5 sm:flex-row sm:items-center sm:justify-between">
           {!entryLoaded ? (
             <>
@@ -348,74 +384,95 @@ function CandidateSessionCard({
           ) : !entry ? (
             <>
               <div>
-                <p className="text-xs font-medium">Ready for your interview?</p>
+                <p className="text-xs font-medium">
+                  {session.status === "paused"
+                    ? "Interviews are paused."
+                    : session.status === "closed"
+                      ? "This session is closed."
+                      : scheduleStatus === "ended"
+                        ? "This session has ended."
+                        : scheduleStatus === "upcoming"
+                          ? "Ready to check in?"
+                          : "Ready for your interview?"}
+                </p>
+
                 <p className="mt-0.5 text-[0.7rem] text-[var(--muted)]">
-                  Join when you're ready to enter the live queue.
+                  {session.status === "paused"
+                    ? "Check-in will be available again when the session resumes."
+                    : session.status === "closed"
+                      ? "This interview session is no longer accepting candidates."
+                      : scheduleStatus === "ended"
+                        ? "The scheduled interview window has ended."
+                        : scheduleStatus === "upcoming"
+                          ? "You can check in early and secure your place in the queue."
+                          : "Join when you're ready to enter the live queue."}
                 </p>
               </div>
 
               <button
                 onClick={onJoin}
-                disabled={joining || status === "ended"}
+                disabled={joining || !canJoin}
                 className="group flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-[var(--accent)] px-5 py-2.5 text-sm font-semibold text-white transition-all hover:-translate-y-0.5 hover:bg-[var(--accent-hover)] active:translate-y-0 disabled:pointer-events-none disabled:opacity-50 sm:w-auto"
               >
                 {joining
                   ? "Joining..."
-                  : status === "ended"
-                    ? "Session ended"
-                    : "Join queue"}
-                {!joining && status !== "ended" && (
-                  <span>
-                    {" "}
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      height="17px"
-                      viewBox="0 -960 960 960"
-                      width="17px"
-                      fill="#e3e3e3"
-                    >
-                      <path d="m256-240-56-56 384-384H240v-80h480v480h-80v-344L256-240Z" />
-                    </svg>
-                  </span>
-                )}
+                  : session.status === "paused"
+                    ? "Queue paused"
+                    : session.status === "closed"
+                      ? "Session closed"
+                      : scheduleStatus === "ended"
+                        ? "Session ended"
+                        : "Join queue"}
+
+                {!joining && canJoin && <ArrowIcon />}
               </button>
             </>
           ) : entry.status === "completed" ? (
             <>
               <div>
                 <p className="text-xs font-medium">Interview completed.</p>
+
                 <p className="mt-0.5 text-[0.7rem] text-[var(--muted)]">
                   You're all done with this interview session.
                 </p>
               </div>
 
               <span className="flex w-full items-center justify-center gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-5 py-2.5 text-sm font-medium text-emerald-500 sm:w-auto">
-                <span>
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    height="17px"
-                    viewBox="0 -960 960 960"
-                    width="17px"
-                    fill="#147b3a"
-                  >
-                    <path d="M389-267 195-460l51-52 143 143 325-324 51 51-376 375Z" />
-                  </svg>
-                </span>
+                <CheckIcon />
                 Completed
               </span>
             </>
           ) : entry.status === "skipped" ? (
             <>
               <div>
-                <p className="text-xs font-medium">Interview closed.</p>
+                <p className="text-xs font-medium">Missed your interview?</p>
+
                 <p className="mt-0.5 text-[0.7rem] text-[var(--muted)]">
-                  Your interview team has closed this queue entry.
+                  {session.status === "paused"
+                    ? "You can rejoin once interviews resume."
+                    : session.status === "closed"
+                      ? "This interview session has been closed."
+                      : scheduleStatus === "ended"
+                        ? "The scheduled interview window has ended."
+                        : "You can still rejoin the queue if you're available."}
                 </p>
               </div>
 
-              <span className="flex w-full items-center justify-center gap-2 rounded-lg border border-amber-500/20 bg-amber-500/5 px-5 py-2.5 text-sm font-medium text-amber-500 sm:w-auto">
-                Closed
-              </span>
+              <button
+                onClick={onReturn}
+                disabled={!canRejoin}
+                className="group flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg border border-amber-500/20 bg-amber-500/5 px-5 py-2.5 text-sm font-medium text-amber-500 transition-all hover:-translate-y-0.5 hover:bg-amber-500/10 active:translate-y-0 disabled:pointer-events-none disabled:opacity-50 sm:w-auto"
+              >
+                {session.status === "paused"
+                  ? "Queue paused"
+                  : session.status === "closed"
+                    ? "Session closed"
+                    : scheduleStatus === "ended"
+                      ? "Session ended"
+                      : "Rejoin queue"}
+
+                {canRejoin && <ArrowIcon />}
+              </button>
             </>
           ) : (
             <>
@@ -430,10 +487,20 @@ function CandidateSessionCard({
 
                 <p className="mt-0.5 text-[0.7rem] text-[var(--muted)]">
                   {entry.status === "waiting"
-                    ? "Your place in the queue is secured."
+                    ? session.status === "paused"
+                      ? "Your place is secured while interviews are paused."
+                      : session.status === "closed"
+                        ? "This session has now been closed."
+                        : "Your place in the queue is secured."
                     : entry.status === "next"
-                      ? "Stay ready — you'll be called shortly."
-                      : "Your interview has started."}
+                      ? session.status === "paused"
+                        ? "You're still up next. Your position is preserved while paused."
+                        : session.status === "closed"
+                          ? "This session has now been closed."
+                          : "Stay ready — you'll be called shortly."
+                      : session.status === "closed"
+                        ? "This session has now been closed."
+                        : "Your interview has started."}
                 </p>
               </div>
 
@@ -442,27 +509,19 @@ function CandidateSessionCard({
                 className="group flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-[var(--foreground)] px-5 py-2.5 text-sm font-medium text-[var(--background)] transition-all hover:-translate-y-0.5 hover:opacity-90 active:translate-y-0 sm:w-auto"
               >
                 Return to waiting hall
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  height="17px"
-                  viewBox="0 -960 960 960"
-                  width="17px"
-                  fill="#e3e3e3"
-                >
-                  <path d="m256-240-56-56 384-384H240v-80h480v480h-80v-344L256-240Z" />
-                </svg>
+                <ArrowIcon />
               </button>
             </>
           )}
-        </div>{" "}
+        </div>
       </div>
     </article>
   );
 }
 
-type SessionStatusType = "live" | "upcoming" | "ended";
+type ScheduleStatus = "live" | "upcoming" | "ended";
 
-function getSessionStatus(start: Date, end: Date): SessionStatusType {
+function getScheduleStatus(start: Date, end: Date): ScheduleStatus {
   const now = new Date();
 
   if (now < start) return "upcoming";
@@ -471,8 +530,42 @@ function getSessionStatus(start: Date, end: Date): SessionStatusType {
   return "live";
 }
 
-function SessionStatus({ status }: { status: SessionStatusType }) {
-  if (status === "live") {
+function SessionStatus({
+  sessionStatus,
+  scheduleStatus,
+}: {
+  sessionStatus: InterviewSession["status"];
+  scheduleStatus: ScheduleStatus;
+}) {
+  /*
+   * Operational state takes priority over schedule state.
+   */
+
+  if (sessionStatus === "paused") {
+    return (
+      <div className="flex items-center gap-2">
+        <span className="size-2 rounded-full bg-amber-500" />
+
+        <span className="text-xs font-semibold uppercase tracking-[0.16em] text-amber-500">
+          Paused
+        </span>
+      </div>
+    );
+  }
+
+  if (sessionStatus === "closed") {
+    return (
+      <div className="flex items-center gap-2">
+        <span className="size-2 rounded-full bg-[var(--muted)] opacity-50" />
+
+        <span className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
+          Closed
+        </span>
+      </div>
+    );
+  }
+
+  if (scheduleStatus === "live") {
     return (
       <div className="flex items-center gap-2">
         <span className="relative flex size-2">
@@ -487,7 +580,7 @@ function SessionStatus({ status }: { status: SessionStatusType }) {
     );
   }
 
-  if (status === "upcoming") {
+  if (scheduleStatus === "upcoming") {
     return (
       <div className="flex items-center gap-2">
         <span className="size-2 rounded-full border border-[var(--accent)]" />
@@ -578,6 +671,34 @@ function LoadingScreen() {
   );
 }
 
+function ArrowIcon() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      height="17px"
+      viewBox="0 -960 960 960"
+      width="17px"
+      fill="currentColor"
+    >
+      <path d="m256-240-56-56 384-384H240v-80h480v480h-80v-344L256-240Z" />
+    </svg>
+  );
+}
+
+function CheckIcon() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      height="17px"
+      viewBox="0 -960 960 960"
+      width="17px"
+      fill="currentColor"
+    >
+      <path d="M389-267 195-460l51-52 143 143 325-324 51 51-376 375Z" />
+    </svg>
+  );
+}
+
 function NotificationModal({
   onSkip,
   onEnable,
@@ -606,6 +727,7 @@ function NotificationModal({
         <div className="border-b border-[var(--border)] px-5 py-5 sm:px-6">
           <div className="flex items-center gap-2">
             <span className="size-1.5 rounded-full bg-[var(--accent)]" />
+
             <p className="text-xs font-medium uppercase tracking-[0.15em] text-[var(--accent)]">
               Notifications
             </p>

@@ -3,6 +3,7 @@ import {
   collection,
   doc,
   getDoc,
+  updateDoc,
   onSnapshot,
   serverTimestamp,
   Timestamp,
@@ -12,7 +13,11 @@ import {
 } from "firebase/firestore";
 
 import { auth, db } from "../lib/firebase";
-import type { CreateSessionInput, InterviewSession } from "../types/session";
+import type {
+  CreateSessionInput,
+  InterviewSession,
+  SessionStatus,
+} from "../types/session";
 
 export async function createSession(
   input: CreateSessionInput,
@@ -30,7 +35,7 @@ export async function createSession(
     description: input.description,
     meetUrl: input.meetUrl,
 
-    active: true,
+    status: "open",
 
     averageInterviewMinutes: input.averageInterviewMinutes,
 
@@ -80,7 +85,10 @@ export function subscribeToSession(
 export async function getActiveSessions(): Promise<InterviewSession[]> {
   const sessionsRef = collection(db, "sessions");
 
-  const activeSessionsQuery = query(sessionsRef, where("active", "==", true));
+  const activeSessionsQuery = query(
+    sessionsRef,
+    where("status", "in", ["open", "paused", "closed"]),
+  );
 
   const snapshot = await getDocs(activeSessionsQuery);
 
@@ -88,4 +96,51 @@ export async function getActiveSessions(): Promise<InterviewSession[]> {
     id: document.id,
     ...document.data(),
   })) as InterviewSession[];
+}
+
+export async function updateSessionStatus(
+  sessionId: string,
+  status: SessionStatus,
+) {
+  const sessionRef = doc(db, "sessions", sessionId);
+
+  await updateDoc(sessionRef, {
+    status,
+  });
+}
+
+export async function updateSession(
+  sessionId: string,
+  input: CreateSessionInput,
+): Promise<void> {
+  const sessionRef = doc(db, "sessions", sessionId);
+
+  await updateDoc(sessionRef, {
+    name: input.name,
+    description: input.description,
+    meetUrl: input.meetUrl,
+    averageInterviewMinutes: input.averageInterviewMinutes,
+    startsAt: Timestamp.fromDate(input.startsAt),
+    endsAt: Timestamp.fromDate(input.endsAt),
+  });
+}
+
+export function subscribeToSessions(
+  callback: (sessions: InterviewSession[]) => void,
+) {
+  const sessionsRef = collection(db, "sessions");
+
+  const sessionsQuery = query(
+    sessionsRef,
+    where("status", "in", ["open", "paused", "closed"]),
+  );
+
+  return onSnapshot(sessionsQuery, (snapshot) => {
+    const sessions = snapshot.docs.map((document) => ({
+      id: document.id,
+      ...document.data(),
+    })) as InterviewSession[];
+
+    callback(sessions);
+  });
 }

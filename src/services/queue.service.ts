@@ -191,3 +191,19 @@ async function syncPublicLiveState(sessionId: string) {
     },
   );
 }
+
+export async function rejoinQueue(sessionId: string, userId: string) {
+  const entryRef = doc(db, "sessions", sessionId, "queue", userId);
+
+  await updateDoc(entryRef, {
+    status: "waiting",
+    joinedAt: serverTimestamp(),
+
+    nextAt: null,
+    interviewStartedAt: null,
+    completedAt: null,
+    skippedAt: null,
+  });
+
+  await syncPublicLiveState(sessionId);
+}

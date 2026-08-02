@@ -11,10 +11,19 @@ service cloud.firestore {
       return signedIn() && request.auth.uid == userId;
     }
 
+    function isSuperAdmin() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "superadmin";
+    }
+
     function isAdmin() {
       return signedIn()
         && exists(/databases/$(database)/documents/users/$(request.auth.uid))
-        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin";
+        && (
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin"
+          || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "superadmin"
+        );
     }
 
     match /users/{userId} {
@@ -32,12 +41,15 @@ service cloud.firestore {
         && request.resource.data.role == "candidate"
         && request.resource.data.createdAt == request.time;
 
-      allow update, delete: if isAdmin();
+      // User/admin management belongs to super admins.
+      allow update, delete: if isSuperAdmin();
     }
 
     match /sessions/{sessionId} {
       allow read: if signedIn();
-      allow create, update, delete: if isAdmin();
+
+      // Session management belongs to super admins.
+      allow create, update, delete: if isSuperAdmin();
 
       match /queue/{userId} {
         allow read: if isOwner(userId) || isAdmin();
@@ -53,13 +65,37 @@ service cloud.firestore {
           && request.resource.data.status == "waiting"
           && request.resource.data.joinedAt == request.time;
 
-        allow update: if isAdmin();
+        // Admins operate interviews.
+        // Super admins are included in isAdmin().
+        //
+        // Candidates may only perform the specific:
+        // skipped -> waiting (rejoin) transition.
+        allow update: if isAdmin()
+          || (
+            isOwner(userId)
+            && resource.data.status == "skipped"
+            && request.resource.data.status == "waiting"
+            && request.resource.data.joinedAt == request.time
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              "status",
+              "joinedAt",
+              "nextAt",
+              "interviewStartedAt",
+              "completedAt",
+              "skippedAt"
+            ])
+          );
 
-        allow delete: if isAdmin() || isOwner(userId);
+        // Candidate can leave their own queue.
+        // Only super admins can forcibly remove another candidate.
+        allow delete: if isOwner(userId) || isSuperAdmin();
       }
 
       match /public/{documentId} {
         allow read: if signedIn();
+
+        // Normal admins need this because queue operations currently
+        // call syncPublicLiveState().
         allow create, update, delete: if isAdmin();
       }
     }
