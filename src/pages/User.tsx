@@ -3,7 +3,7 @@ import type { User } from "firebase/auth";
 import { useNavigate } from "react-router-dom";
 
 import { logout, subscribeToAuth, isAdmin } from "../services/auth.service";
-import { getActiveSessions } from "../services/session.service";
+import { subscribeToSessions } from "../services/session.service";
 import { joinQueue, subscribeToMyQueueEntry } from "../services/queue.service";
 import { requestNotificationPermission } from "../services/notification.service";
 
@@ -47,10 +47,6 @@ export default function UserPage() {
         }
 
         setUser(currentUser);
-
-        const activeSessions = await getActiveSessions();
-
-        setSessions(activeSessions);
         setLoadError(false);
       } catch (error) {
         console.error("Failed to load candidate page:", error);
@@ -62,6 +58,17 @@ export default function UserPage() {
 
     return unsubscribe;
   }, [navigate]);
+
+  useEffect(() => {
+    if (!user) return;
+
+    const unsubscribe = subscribeToSessions((updatedSessions) => {
+      setSessions(updatedSessions);
+      setLoadError(false);
+    });
+
+    return unsubscribe;
+  }, [user]);
 
   useEffect(() => {
     if (!user || sessions.length === 0) return;
@@ -412,7 +419,7 @@ function CandidateSessionCard({
               <button
                 onClick={onJoin}
                 disabled={joining || !canJoin}
-                className="group flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-[var(--accent)] px-5 py-2.5 text-sm font-semibold text-white transition-all hover:-translate-y-0.5 hover:bg-[var(--accent-hover)] active:translate-y-0 disabled:pointer-events-none disabled:opacity-50 sm:w-auto"
+                className="group flex w-full items-center justify-center gap-2 rounded-lg border border-[var(--accent)] bg-[var(--accent)] px-5 py-2.5 text-sm font-semibold text-white transition-all enabled:cursor-pointer enabled:hover:-translate-y-0.5 enabled:hover:bg-[var(--accent-hover)] enabled:active:translate-y-0 disabled:cursor-not-allowed disabled:border-[var(--border)] disabled:bg-[var(--surface)] disabled:text-[var(--muted)] disabled:opacity-70 sm:w-auto"
               >
                 {joining
                   ? "Joining..."
@@ -461,7 +468,7 @@ function CandidateSessionCard({
               <button
                 onClick={onReturn}
                 disabled={!canRejoin}
-                className="group flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg border border-amber-500/20 bg-amber-500/5 px-5 py-2.5 text-sm font-medium text-amber-500 transition-all hover:-translate-y-0.5 hover:bg-amber-500/10 active:translate-y-0 disabled:pointer-events-none disabled:opacity-50 sm:w-auto"
+                className="group flex w-full items-center justify-center gap-2 rounded-lg border border-amber-500/20 bg-amber-500/5 px-5 py-2.5 text-sm font-medium text-amber-500 transition-all enabled:cursor-pointer enabled:hover:-translate-y-0.5 enabled:hover:bg-amber-500/10 enabled:active:translate-y-0 disabled:cursor-not-allowed disabled:border-[var(--border)] disabled:bg-[var(--surface)] disabled:text-[var(--muted)] disabled:opacity-70 sm:w-auto"
               >
                 {session.status === "paused"
                   ? "Queue paused"
