@@ -2,6 +2,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { User } from "firebase/auth";
 import type { Timestamp } from "firebase/firestore";
 import { useNavigate, useParams } from "react-router-dom";
+import {
+  playNextAlert,
+  playInterviewAlert,
+  stopAlerts,
+} from "../services/alert.service";
 
 import {
   isAdmin,
@@ -304,7 +309,56 @@ function CandidateHall({
   const [leaveOpen, setLeaveOpen] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const [rejoining, setRejoining] = useState(false);
+  const previousStatus = useRef<string | null>(null);
 
+  useEffect(() => {
+    if (!entry) return;
+
+    const oldStatus = previousStatus.current;
+    const newStatus = entry.status;
+
+    // Don't fire an alert just because the page loaded.
+    if (oldStatus === null) {
+      previousStatus.current = newStatus;
+      return;
+    }
+
+    // GET READY
+    if (newStatus === "next" && oldStatus !== "next") {
+      void playNextAlert();
+
+      document.title = "🔔 GET READY - Lineup";
+
+      if ("Notification" in window && Notification.permission === "granted") {
+        new Notification("Get ready — you're next!", {
+          body: "Your interview is coming up next. Please stay ready.",
+        });
+      }
+    }
+
+    // INTERVIEW CALL
+    if (newStatus === "interviewing" && oldStatus !== "interviewing") {
+      stopAlerts();
+
+      void playInterviewAlert();
+
+      document.title = "📞 IT'S YOUR TURN - Lineup";
+
+      if ("Notification" in window && Notification.permission === "granted") {
+        new Notification("It's your turn!", {
+          body: "Your interview is ready. Join the Google Meet now.",
+        });
+      }
+    }
+
+    // Interview finished / skipped
+    if (oldStatus === "interviewing" && newStatus !== "interviewing") {
+      stopAlerts();
+      document.title = "Lineup";
+    }
+
+    previousStatus.current = newStatus;
+  }, [entry?.status]);
   const scheduleStatus =
     session.startsAt && session.endsAt
       ? getScheduleStatus(session.startsAt.toDate(), session.endsAt.toDate())

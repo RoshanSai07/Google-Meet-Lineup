@@ -9,6 +9,7 @@ import { requestNotificationPermission } from "../services/notification.service"
 
 import type { InterviewSession } from "../types/session";
 import type { QueueEntry } from "../types/queue";
+import { prepareAlerts } from "../services/alert.service";
 
 export default function UserPage() {
   const navigate = useNavigate();
@@ -94,6 +95,7 @@ export default function UserPage() {
 
   const handleJoinSession = async (sessionId: string) => {
     if (!user) return;
+    prepareAlerts();
 
     const session = sessions.find((item) => item.id === sessionId);
 
